@@ -2,78 +2,89 @@
   Includes
 *************************************************************************/
 
-#include "Teensy-ICM-20948.h"
-#include <SPI.h>
-
+#include "dd_icm209.h"
 // InvenSense drivers and utils
-#include "Icm20948.h"
-#include "SensorTypes.h"
-#include "Icm20948MPUFifoControl.h"
+#include "utils/Icm20948.h"
+#include "utils/SensorTypes.h"
+#include "utils/Icm20948MPUFifoControl.h"
+#include "utils/Icm20948Setup.h"
+
+#include "ps_timer/ps_timer.h"
+#include "ha_iic/ha_iic.h"
+
+#define MAX_MAGNETOMETER_STARTS (10U)
+#define DEFAULT_IIC_TIMEOUT (100U)
+
+IIC_SETUP_PORT_CONNECTION(1, IIC_DEFINE_CONNECTION(IIC_PORT1, 0, 0x68))
 
 /*************************************************************************
   Variables
 *************************************************************************/
 
-int chipSelectPin = 10;
-int spiSpeed = 7000000;
-
 float gyro_x, gyro_y, gyro_z;
-bool gyro_data_ready = false;
+bool_t gyro_data_ready = FALSE;
 
 float accel_x, accel_y, accel_z;
-bool accel_data_ready = false;
+bool_t accel_data_ready = FALSE;
 
 float mag_x, mag_y, mag_z;
-bool mag_data_ready = false;
+bool_t mag_data_ready = FALSE;
 
 float quat_w, quat_x, quat_y, quat_z;
-bool quat_data_ready = false;
+bool_t quat_data_ready = FALSE;
 
 /*************************************************************************
   HAL Functions for Arduino
 *************************************************************************/
 
-int idd_io_hal_read_reg(void * context, uint8_t reg, uint8_t * rbuffer, uint32_t rlen)
+/**
+ * @brief This internal function writes data to a specific register of the
+ * QMI8658 device over I2C.
+ * @param[in,out] ppt_dev QMI8658 device instance.
+ * @param[in] ppt_data Pointer to the data buffer to write.
+ * @param[in] p_data_sz Size of the data to write in bytes.
+ * @param[in] p_reg_addr The register address to write to in the sensor.
+ * @return Result of the execution status.
+ */
+static int write_register(void* user, uint8_t p_reg_addr, const uint8_t* ppt_data, uint32_t p_data_sz)
 {
-  (void)context;
+    response_status_t api_ret_val = RET_OK;
+    (void)user;
+    api_ret_val = ha_iic_master_mem_write(IIC_GET_DEV_PORT(0),
+                                          IIC_GET_DEV_ADDRESS(0),
+                                          ppt_data,
+                                          p_data_sz,
+                                          p_reg_addr,
+                                          HW_IIC_MEM_SZ_8BIT,
+                                          DEFAULT_IIC_TIMEOUT);
 
-  SPI.beginTransaction(SPISettings(spiSpeed, MSBFIRST, SPI_MODE0));
-  SPI.transfer(0x00);
-  SPI.endTransaction();
-
-  digitalWrite(chipSelectPin, LOW);
-  SPI.beginTransaction(SPISettings(spiSpeed, MSBFIRST, SPI_MODE0));
-  SPI.transfer(((reg & 0x7F) | 0x80));
-  for (uint32_t indi = 0; indi < rlen; indi++)
-  {
-    *(rbuffer + indi) = SPI.transfer(0x00);
-  }
-  SPI.endTransaction();
-  digitalWrite(chipSelectPin, HIGH);
-
-  return 0;
+    return api_ret_val == RET_OK ? 0 : -1;
 }
 
-int idd_io_hal_write_reg(void * context, uint8_t reg, const uint8_t * wbuffer, uint32_t wlen)
+/**
+ * @brief This internal function reads data from a specific register of the
+ * QMI8658 device over I2C.
+ * @param[in,out] ppt_dev QMI8658 device instance.
+ * @param[out] ppt_data Pointer to the data buffer to read into.
+ * @param[in] p_data_sz Size of the data to read in bytes.
+ * @param[in] p_reg_addr The register address to read from in the sensor.
+ * @return Result of the execution status.
+ */
+static int read_register(void* user, uint8_t p_reg_addr, uint8_t* ppt_data, uint32_t p_data_sz)
 {
-  (void)context;
+    response_status_t api_ret_val = RET_OK;
+    (void)user;
+    api_ret_val = ha_iic_master_mem_read(IIC_GET_DEV_PORT(0),
+                                         IIC_GET_DEV_ADDRESS(0),
+                                         ppt_data,
+                                         p_data_sz,
+                                         p_reg_addr,
+                                         HW_IIC_MEM_SZ_8BIT,
+                                         DEFAULT_IIC_TIMEOUT);
 
-  SPI.beginTransaction(SPISettings(spiSpeed, MSBFIRST, SPI_MODE0));
-  SPI.transfer(0x00);
-  SPI.endTransaction();
-
-  digitalWrite(chipSelectPin, LOW);
-  SPI.beginTransaction(SPISettings(spiSpeed, MSBFIRST, SPI_MODE0));
-  SPI.transfer((reg & 0x7F) | 0x00);
-  for (uint32_t indi = 0; indi < wlen; indi++)
-  {
-    SPI.transfer(*(wbuffer + indi));
-  }
-  SPI.endTransaction();
-  digitalWrite(chipSelectPin, HIGH);
-
-  return 0;
+    return api_ret_val == RET_OK ? 0 : -1;
 }
+
 
 /*************************************************************************
   Invensense Variables
@@ -96,20 +107,12 @@ int32_t cfg_acc_fsr = 4; // Default = +/- 4g. Valid ranges: 2, 4, 8, 16
 int32_t cfg_gyr_fsr = 2000; // Default = +/- 2000dps. Valid ranges: 250, 500, 1000, 2000
 
 static const uint8_t dmp3_image[] = {
-#include "icm20948_img.dmp3a.h"
+#include "utils/icm20948_img.dmp3a.h"
 };
 
 /*************************************************************************
   Invensense Functions
 *************************************************************************/
-
-void check_rc(int rc, const char * msg_context) 
-{
-  if (rc < 0) {
-    Serial.println("ICM20948 ERROR!");
-    while (1);
-  }
-}
 
 int load_dmp3(void) 
 {
@@ -117,25 +120,24 @@ int load_dmp3(void)
   rc = inv_icm20948_load(&icm_device, dmp3_image, sizeof(dmp3_image));
   return rc;
 }
-
 void inv_icm20948_sleep_us(int us) 
 {
-  delayMicroseconds(us);
+  if (us < 1000) {
+    ps_hard_delay_ms(1);
+  }
+  else
+  {
+    ps_hard_delay_ms(us/1000);
+  }
 }
-
 void inv_icm20948_sleep(int ms) 
 {
-  delay(ms);
+  ps_hard_delay_ms(ms);
 }
 
 uint64_t inv_icm20948_get_time_us(void) 
 {
-  return micros();
-}
-
-inv_bool_t interface_is_SPI(void)
-{
-  return true;
+  return ps_get_cpu_ms() * 1000ULL;
 }
 
 static void icm20948_apply_mounting_matrix(void) 
@@ -143,7 +145,7 @@ static void icm20948_apply_mounting_matrix(void)
   int ii;
 
   for (ii = 0; ii < INV_ICM20948_SENSOR_MAX; ii++) {
-    inv_icm20948_set_matrix(&icm_device, cfg_mounting_matrix, (inv_icm20948_sensor)ii);
+    inv_icm20948_set_matrix(&icm_device, cfg_mounting_matrix, (enum inv_icm20948_sensor)ii);
   }
 }
 
@@ -174,8 +176,6 @@ int icm20948_sensor_setup(void)
   }
 
   if (i == sizeof(EXPECTED_WHOAMI) / sizeof(EXPECTED_WHOAMI[0])) {
-    Serial.print("Bad WHOAMI value = 0x");
-    Serial.println(whoami, HEX);
     return rc;
   }
 
@@ -185,7 +185,6 @@ int icm20948_sensor_setup(void)
   // set default power mode
   rc = inv_icm20948_initialize(&icm_device, dmp3_image, sizeof(dmp3_image));
   if (rc != 0) {
-    Serial.println("Icm20948 Initialization failed.");
     return rc;
   }
 
@@ -194,9 +193,6 @@ int icm20948_sensor_setup(void)
   // Initialize auxiliary sensors
   inv_icm20948_register_aux_compass( &icm_device, INV_ICM20948_COMPASS_ID_AK09916, AK0991x_DEFAULT_I2C_ADDR);
   rc = inv_icm20948_initialize_auxiliary(&icm_device);
-  if (rc == -1) {
-    Serial.println("Compass not detected...");
-  }
 
   icm20948_apply_mounting_matrix();
 
@@ -307,11 +303,6 @@ void build_sensor_event_data(void * context, enum inv_icm20948_sensor sensortype
     case INV_SENSOR_TYPE_ROTATION_VECTOR:
       memcpy(&(event.data.quaternion.accuracy), arg, sizeof(event.data.quaternion.accuracy));
       memcpy(event.data.quaternion.quat, data, sizeof(event.data.quaternion.quat));
-      break;
-    case INV_SENSOR_TYPE_GAME_ROTATION_VECTOR:
-      memcpy(event.data.quaternion.quat, data, sizeof(event.data.quaternion.quat));
-      event.data.quaternion.accuracy_flag = icm20948_get_grv_accuracy();
-
       // WE WANT THIS
       quat_w = event.data.quaternion.quat[0];
       quat_x = event.data.quaternion.quat[1];
@@ -319,23 +310,11 @@ void build_sensor_event_data(void * context, enum inv_icm20948_sensor sensortype
       quat_z = event.data.quaternion.quat[3];
       quat_data_ready = true;
       break;
+    case INV_SENSOR_TYPE_GAME_ROTATION_VECTOR:
+      memcpy(event.data.quaternion.quat, data, sizeof(event.data.quaternion.quat));
+      event.data.quaternion.accuracy_flag = icm20948_get_grv_accuracy();
+      break;
 
-    case INV_SENSOR_TYPE_BAC:
-      memcpy(&(event.data.bac.event), data, sizeof(event.data.bac.event));
-      break;
-    case INV_SENSOR_TYPE_PICK_UP_GESTURE:
-    case INV_SENSOR_TYPE_TILT_DETECTOR:
-    case INV_SENSOR_TYPE_STEP_DETECTOR:
-    case INV_SENSOR_TYPE_SMD:
-      event.data.event = true;
-      break;
-    case INV_SENSOR_TYPE_B2S:
-      event.data.event = true;
-      memcpy(&(event.data.b2s.direction), data, sizeof(event.data.b2s.direction));
-      break;
-    case INV_SENSOR_TYPE_STEP_COUNTER:
-      memcpy(&(event.data.step.count), data, sizeof(event.data.step.count));
-      break;
     case INV_SENSOR_TYPE_ORIENTATION:
       //we just want to copy x,y,z from orientation data
       memcpy(&(event.data.orientation), data, 3 * sizeof(float));
@@ -365,34 +344,18 @@ static enum inv_icm20948_sensor idd_sensortype_conversion(int sensor)
       return INV_ICM20948_SENSOR_MAGNETIC_FIELD_UNCALIBRATED;
     case INV_SENSOR_TYPE_UNCAL_GYROSCOPE:
       return INV_ICM20948_SENSOR_GYROSCOPE_UNCALIBRATED;
-    case INV_SENSOR_TYPE_BAC:
-      return INV_ICM20948_SENSOR_ACTIVITY_CLASSIFICATON;
-    case INV_SENSOR_TYPE_STEP_DETECTOR:
-      return INV_ICM20948_SENSOR_STEP_DETECTOR;
-    case INV_SENSOR_TYPE_STEP_COUNTER:
-      return INV_ICM20948_SENSOR_STEP_COUNTER;
-    case INV_SENSOR_TYPE_GAME_ROTATION_VECTOR:
-      return INV_ICM20948_SENSOR_GAME_ROTATION_VECTOR;
     case INV_SENSOR_TYPE_ROTATION_VECTOR:
       return INV_ICM20948_SENSOR_ROTATION_VECTOR;
     case INV_SENSOR_TYPE_GEOMAG_ROTATION_VECTOR:
       return INV_ICM20948_SENSOR_GEOMAGNETIC_ROTATION_VECTOR;
     case INV_SENSOR_TYPE_MAGNETOMETER:
       return INV_ICM20948_SENSOR_GEOMAGNETIC_FIELD;
-    case INV_SENSOR_TYPE_SMD:
-      return INV_ICM20948_SENSOR_WAKEUP_SIGNIFICANT_MOTION;
-    case INV_SENSOR_TYPE_PICK_UP_GESTURE:
-      return INV_ICM20948_SENSOR_FLIP_PICKUP;
-    case INV_SENSOR_TYPE_TILT_DETECTOR:
-      return INV_ICM20948_SENSOR_WAKEUP_TILT_DETECTOR;
     case INV_SENSOR_TYPE_GRAVITY:
       return INV_ICM20948_SENSOR_GRAVITY;
     case INV_SENSOR_TYPE_LINEAR_ACCELERATION:
       return INV_ICM20948_SENSOR_LINEAR_ACCELERATION;
     case INV_SENSOR_TYPE_ORIENTATION:
       return INV_ICM20948_SENSOR_ORIENTATION;
-    case INV_SENSOR_TYPE_B2S:
-      return INV_ICM20948_SENSOR_B2S;
     default:
       return INV_ICM20948_SENSOR_MAX;
   }
@@ -402,33 +365,18 @@ static enum inv_icm20948_sensor idd_sensortype_conversion(int sensor)
   Class Functions
 *************************************************************************/
 
-TeensyICM20948::TeensyICM20948()
+void dd_icm209_init(TeensyICM20948Settings settings)
 {
-}
-
-void TeensyICM20948::init(TeensyICM20948Settings settings)
-{
-  Serial.println("Initializing ICM-20948...");
-
-  // Setup SPI
-  chipSelectPin = settings.cs_pin;
-  spiSpeed = settings.spi_speed;
-  pinMode(chipSelectPin, OUTPUT);
-  digitalWrite(chipSelectPin, HIGH);
-  SPI.begin();
-
-  SPI.beginTransaction(SPISettings(spiSpeed, MSBFIRST, SPI_MODE0));
-  SPI.transfer(0x00);
-  SPI.endTransaction();
-
+  ha_iic_init();
+  
   // Initialize icm20948 serif structure
   struct inv_icm20948_serif icm20948_serif;
   icm20948_serif.context   = 0; // no need
-  icm20948_serif.read_reg  = idd_io_hal_read_reg;
-  icm20948_serif.write_reg = idd_io_hal_write_reg;
+  icm20948_serif.read_reg  = read_register;
+  icm20948_serif.write_reg = write_register;
   icm20948_serif.max_read  = 1024 * 16; // maximum number of bytes allowed per serial read
   icm20948_serif.max_write = 1024 * 16; // maximum number of bytes allowed per serial write
-  icm20948_serif.is_spi = interface_is_SPI();
+  icm20948_serif.is_spi = FALSE; // we are using I2C
 
   // Reset icm20948 driver states
   inv_icm20948_reset_states(&icm_device, &icm20948_serif);
@@ -447,13 +395,15 @@ void TeensyICM20948::init(TeensyICM20948Settings settings)
   // Now that Icm20948 device is initialized, we can proceed with DMP image loading
   // This step is mandatory as DMP image is not stored in non volatile memory
   rc += load_dmp3();
-  check_rc(rc, "Error sensor_setup/DMP loading.");
+  if (rc != 0) {
+    return; // Handle error
+  }
 
   // Set mode
   inv_icm20948_set_lowpower_or_highperformance(&icm_device, settings.mode);
 
   // Set frequency
-  rc = inv_icm20948_set_sensor_period(&icm_device, idd_sensortype_conversion(INV_SENSOR_TYPE_GAME_ROTATION_VECTOR), 1000 / settings.quaternion_frequency);
+  rc = inv_icm20948_set_sensor_period(&icm_device, idd_sensortype_conversion(INV_SENSOR_TYPE_ROTATION_VECTOR), 1000 / settings.quaternion_frequency);
   rc = inv_icm20948_set_sensor_period(&icm_device, idd_sensortype_conversion(INV_SENSOR_TYPE_GYROSCOPE), 1000 / settings.gyroscope_frequency);
   rc = inv_icm20948_set_sensor_period(&icm_device, idd_sensortype_conversion(INV_SENSOR_TYPE_ACCELEROMETER), 1000 / settings.accelerometer_frequency);
   rc = inv_icm20948_set_sensor_period(&icm_device, idd_sensortype_conversion(INV_SENSOR_TYPE_MAGNETOMETER), 1000 / settings.magnetometer_frequency);
@@ -461,64 +411,64 @@ void TeensyICM20948::init(TeensyICM20948Settings settings)
   // Enable / disable
   rc = inv_icm20948_enable_sensor(&icm_device, idd_sensortype_conversion(INV_SENSOR_TYPE_GYROSCOPE), settings.enable_gyroscope);
   rc = inv_icm20948_enable_sensor(&icm_device, idd_sensortype_conversion(INV_SENSOR_TYPE_ACCELEROMETER), settings.enable_accelerometer);
-  rc = inv_icm20948_enable_sensor(&icm_device, idd_sensortype_conversion(INV_SENSOR_TYPE_GAME_ROTATION_VECTOR), settings.enable_quaternion);
+  rc = inv_icm20948_enable_sensor(&icm_device, idd_sensortype_conversion(INV_SENSOR_TYPE_ROTATION_VECTOR), settings.enable_quaternion);
   rc = inv_icm20948_enable_sensor(&icm_device, idd_sensortype_conversion(INV_SENSOR_TYPE_MAGNETOMETER), settings.enable_magnetometer);
 }
 
-void TeensyICM20948::task()
+void dd_icm209_task()
 {
   inv_icm20948_poll_sensor(&icm_device, (void*)0, build_sensor_event_data);
 }
 
-bool TeensyICM20948::gyroDataIsReady()
+bool_t dd_icm209_gyroDataIsReady()
 {
   return gyro_data_ready;
 }
 
-bool TeensyICM20948::accelDataIsReady()
+bool_t dd_icm209_accelDataIsReady()
 {
   return accel_data_ready;
 }
 
-bool TeensyICM20948::magDataIsReady()
+bool_t dd_icm209_magDataIsReady()
 {
   return mag_data_ready;
 }
 
-bool TeensyICM20948::quatDataIsReady()
+bool_t dd_icm209_quatDataIsReady()
 {
   return quat_data_ready;
 }
 
-void TeensyICM20948::readGyroData(float *x, float *y, float *z)
+void dd_icm209_readGyroData(float *x, float *y, float *z)
 {
   *x = gyro_x;
   *y = gyro_y;
   *z = gyro_z;
-  gyro_data_ready = false;
+  gyro_data_ready = FALSE;
 }
 
-void TeensyICM20948::readAccelData(float *x, float *y, float *z)
+void dd_icm209_readAccelData(float *x, float *y, float *z)
 {
   *x = accel_x;
   *y = accel_y;
   *z = accel_z;
-  accel_data_ready = false;
+  accel_data_ready = FALSE;
 }
 
-void TeensyICM20948::readMagData(float *x, float *y, float *z)
+void dd_icm209_readMagData(float *x, float *y, float *z)
 {
   *x = mag_x;
   *y = mag_y;
   *z = mag_z;
-  mag_data_ready = false;
+  mag_data_ready = FALSE;
 }
 
-void TeensyICM20948::readQuatData(float *w, float *x, float *y, float *z)
+void dd_icm209_readQuatData(float *w, float *x, float *y, float *z)
 {
   *w = quat_w;
   *x = quat_x;
   *y = quat_y;
   *z = quat_z;
-  quat_data_ready = false;
+  quat_data_ready = FALSE;
 }
