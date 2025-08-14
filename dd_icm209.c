@@ -5,6 +5,7 @@
 #include "dd_icm209.h"
 // InvenSense drivers and utils
 #include "ha_iic/ha_iic.h"
+#include "ha_timer/ha_timer.h"
 #include "ps_app_timer/ps_app_timer.h"
 #include "utils/Icm20948.h"
 #include "utils/Icm20948MPUFifoControl.h"
@@ -31,10 +32,6 @@ bool_t mag_data_ready = FALSE;
 
 float  quat_w, quat_x, quat_y, quat_z;
 bool_t quat_data_ready = FALSE;
-
-/*************************************************************************
-  HAL Functions for Arduino
-*************************************************************************/
 
 /**
  * @brief This internal function writes data to a specific register of the
@@ -117,23 +114,16 @@ int load_dmp3(void)
 }
 void inv_icm20948_sleep_us(int us)
 {
-    if (us < 1000)
-    {
-        ps_hard_delay_ms(1);
-    }
-    else
-    {
-        ps_hard_delay_ms(us / 1000);
-    }
+    ha_timer_hard_delay_us(us);
 }
 void inv_icm20948_sleep(int ms)
 {
-    ps_hard_delay_ms(ms);
+    ha_timer_hard_delay_ms(ms);
 }
 
 uint64_t inv_icm20948_get_time_us(void)
 {
-    return ps_get_cpu_ms() * 1000ULL;
+    return ha_timer_get_cpu_time_us();
 }
 
 static void icm20948_apply_mounting_matrix(void)
@@ -376,7 +366,7 @@ static enum inv_icm20948_sensor idd_sensortype_conversion(int sensor)
 void dd_icm209_init(TeensyICM20948Settings settings)
 {
     ha_iic_init();
-
+    ha_timer_init();
     // Initialize icm20948 serif structure
     struct inv_icm20948_serif icm20948_serif;
     icm20948_serif.context   = 0; // no need
