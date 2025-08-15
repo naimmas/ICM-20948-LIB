@@ -363,8 +363,10 @@ static enum inv_icm20948_sensor idd_sensortype_conversion(int sensor)
   Class Functions
 *************************************************************************/
 
-void dd_icm209_init(TeensyICM20948Settings settings)
+response_status_t dd_icm209_init(TeensyICM20948Settings settings)
 {
+    response_status_t ret_val = RET_OK;
+
     ha_iic_init();
     ha_timer_init();
     // Initialize icm20948 serif structure
@@ -397,7 +399,7 @@ void dd_icm209_init(TeensyICM20948Settings settings)
     rc += load_dmp3();
     if (rc != 0)
     {
-        return; // Handle error
+        return RET_ERROR; // Handle error
     }
 
     // Set mode
@@ -430,6 +432,12 @@ void dd_icm209_init(TeensyICM20948Settings settings)
     rc = inv_icm20948_enable_sensor(&icm_device,
                                     idd_sensortype_conversion(INV_SENSOR_TYPE_MAGNETOMETER),
                                     settings.enable_magnetometer);
+    if (rc != 0)
+    {
+        return RET_ERROR; // Handle error
+    }
+
+    return RET_OK;
 }
 
 void dd_icm209_task()

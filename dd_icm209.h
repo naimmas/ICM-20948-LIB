@@ -24,8 +24,8 @@ typedef struct
   Class
 *************************************************************************/
 
-void dd_icm209_init(TeensyICM20948Settings settings);
-void dd_icm209_task();
+response_status_t dd_icm209_init(TeensyICM20948Settings settings);
+void              dd_icm209_task();
 
 bool_t dd_icm209_gyroDataIsReady();
 bool_t dd_icm209_accelDataIsReady();
