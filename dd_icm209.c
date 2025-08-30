@@ -151,8 +151,9 @@ static void icm20948_set_fsr(void)
 
 int icm20948_sensor_setup(void)
 {
-    int     rc;
-    uint8_t i, whoami = 0xff;
+    int     rc = 0;
+    size_t i = 0;
+    uint8_t whoami = 0xff;
 
     inv_icm20948_soft_reset(&icm_device);
 
@@ -196,9 +197,9 @@ int icm20948_sensor_setup(void)
     icm20948_set_fsr();
 
     // re-initialize base state structure
-    inv_icm20948_init_structure(&icm_device);
+    rc += inv_icm20948_init_structure(&icm_device);
 
-    return 0;
+    return rc;
 }
 
 static uint8_t icm20948_get_grv_accuracy(void)
@@ -365,8 +366,6 @@ static enum inv_icm20948_sensor idd_sensortype_conversion(int sensor)
 
 response_status_t dd_icm209_init(TeensyICM20948Settings settings)
 {
-    response_status_t ret_val = RET_OK;
-
     ha_iic_init();
     ha_timer_init();
     // Initialize icm20948 serif structure

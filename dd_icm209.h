@@ -1,5 +1,5 @@
-#ifndef __TEENSY_ICM_20948_H__
-#define __TEENSY_ICM_20948_H__
+#ifndef TEENSY_ICM_20948_H_
+#define TEENSY_ICM_20948_H_
 
 #include "su_common.h"
 
@@ -37,4 +37,4 @@ void dd_icm209_readAccelData(float* x, float* y, float* z);
 void dd_icm209_readMagData(float* x, float* y, float* z);
 void dd_icm209_readQuatData(float* w, float* x, float* y, float* z);
 
-#endif // __TEENSY_ICM_20948_H__
+#endif // TEENSY_ICM_20948_H_
