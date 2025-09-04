@@ -546,8 +546,8 @@ int inv_icm20948_poll_sensor(struct inv_icm20948 * s, void * context,
 	unsigned short header=0, header2 = 0;
 	int data_left_in_fifo=0;
 	short short_data[3] = {0};
-	signed long  long_data[3] = {0};
-	signed long  long_quat[3] = {0};
+	signed long  long_data[3] = {0,0,0};
+	signed long  long_quat[4] = {0,0,0,0};
 	float gyro_raw_float[3];
 	float gyro_bias_float[3];
 	int gyro_accuracy = 0;
