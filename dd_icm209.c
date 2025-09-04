@@ -87,7 +87,7 @@ static int read_register(void* ppt_user, uint8_t p_reg_addr, uint8_t* ppt_data, 
 *************************************************************************/
 
 inv_icm20948_t       g_icm_device;
-int                  g_rc                = 0;
+int                  g_rc              = 0;
 static const uint8_t expected_whoami[] = { 0xEA }; /* WHOAMI value for ICM20948 or derivative */
 #define A_K0991X_DEFAULT_I2_C_ADDR  0x0C
 #define THREE_AXES 3
@@ -141,8 +141,12 @@ static void icm20948_set_fsr(void)
     inv_icm20948_set_fsr(&g_icm_device,
                          INV_ICM20948_SENSOR_RAW_ACCELEROMETER,
                          (const void*)&g_cfg_acc_fsr);
-    inv_icm20948_set_fsr(&g_icm_device, INV_ICM20948_SENSOR_ACCELEROMETER, (const void*)&g_cfg_acc_fsr);
-    inv_icm20948_set_fsr(&g_icm_device, INV_ICM20948_SENSOR_RAW_GYROSCOPE, (const void*)&g_cfg_gyr_fsr);
+    inv_icm20948_set_fsr(&g_icm_device,
+                         INV_ICM20948_SENSOR_ACCELEROMETER,
+                         (const void*)&g_cfg_acc_fsr);
+    inv_icm20948_set_fsr(&g_icm_device,
+                         INV_ICM20948_SENSOR_RAW_GYROSCOPE,
+                         (const void*)&g_cfg_gyr_fsr);
     inv_icm20948_set_fsr(&g_icm_device, INV_ICM20948_SENSOR_GYROSCOPE, (const void*)&g_cfg_gyr_fsr);
     inv_icm20948_set_fsr(&g_icm_device,
                          INV_ICM20948_SENSOR_GYROSCOPE_UNCALIBRATED,
@@ -151,8 +155,8 @@ static void icm20948_set_fsr(void)
 
 int icm20948_sensor_setup(void)
 {
-    int     rc = 0;
-    size_t i = 0;
+    int     rc     = 0;
+    size_t  i      = 0;
     uint8_t whoami = 0xff;
 
     inv_icm20948_soft_reset(&g_icm_device);
@@ -205,7 +209,7 @@ int icm20948_sensor_setup(void)
 static uint8_t icm20948_get_grv_accuracy(void)
 {
     uint8_t accel_accuracy = 0;
-    uint8_t gyro_accuracy = 0;
+    uint8_t gyro_accuracy  = 0;
 
     accel_accuracy = (uint8_t)inv_icm20948_get_accel_accuracy();
     gyro_accuracy  = (uint8_t)inv_icm20948_get_gyro_accuracy();
@@ -235,8 +239,8 @@ static uint8_t g_convert_to_generic_ids[INV_ICM20948_SENSOR_MAX] = {
     INV_SENSOR_TYPE_B2S
 };
 
-void build_sensor_event_data(void* ppt_context, enum inv_icm20948_sensor p_sensortype, uint64_t p_timestamp,
-                             const void* ppt_data, const void* ppt_arg)
+void build_sensor_event_data(void* ppt_context, enum inv_icm20948_sensor p_sensortype,
+                             uint64_t p_timestamp, const void* ppt_data, const void* ppt_arg)
 {
     float              raw_bias_data[6];
     inv_sensor_event_t event;
@@ -252,17 +256,23 @@ void build_sensor_event_data(void* ppt_context, enum inv_icm20948_sensor p_senso
             memcpy(raw_bias_data, ppt_data, sizeof(raw_bias_data));
             memcpy(event.data.gyr.vect, &raw_bias_data[0], sizeof(event.data.gyr.vect));
             memcpy(event.data.gyr.bias, &raw_bias_data[3], sizeof(event.data.gyr.bias));
-            memcpy(&(event.data.gyr.accuracy_flag), (uint8_t*)ppt_arg, sizeof(event.data.gyr.accuracy_flag));
+            memcpy(&(event.data.gyr.accuracy_flag),
+                   (uint8_t*)ppt_arg,
+                   sizeof(event.data.gyr.accuracy_flag));
             break;
         case INV_SENSOR_TYPE_UNCAL_MAGNETOMETER:
             memcpy(raw_bias_data, ppt_data, sizeof(raw_bias_data));
             memcpy(event.data.mag.vect, &raw_bias_data[0], sizeof(event.data.mag.vect));
             memcpy(event.data.mag.bias, &raw_bias_data[3], sizeof(event.data.mag.bias));
-            memcpy(&(event.data.gyr.accuracy_flag), (uint8_t*)ppt_arg, sizeof(event.data.gyr.accuracy_flag));
+            memcpy(&(event.data.gyr.accuracy_flag),
+                   (uint8_t*)ppt_arg,
+                   sizeof(event.data.gyr.accuracy_flag));
             break;
         case INV_SENSOR_TYPE_GYROSCOPE:
             memcpy(event.data.gyr.vect, ppt_data, sizeof(event.data.gyr.vect));
-            memcpy(&(event.data.gyr.accuracy_flag), (uint8_t*)ppt_arg, sizeof(event.data.gyr.accuracy_flag));
+            memcpy(&(event.data.gyr.accuracy_flag),
+                   (uint8_t*)ppt_arg,
+                   sizeof(event.data.gyr.accuracy_flag));
 
             // WE WANT THIS
             g_gyro_x          = event.data.gyr.vect[0];
@@ -278,7 +288,9 @@ void build_sensor_event_data(void* ppt_context, enum inv_icm20948_sensor p_senso
         case INV_SENSOR_TYPE_LINEAR_ACCELERATION:
         case INV_SENSOR_TYPE_ACCELEROMETER:
             memcpy(event.data.acc.vect, ppt_data, sizeof(event.data.acc.vect));
-            memcpy(&(event.data.acc.accuracy_flag), (uint8_t*)ppt_arg, sizeof(event.data.acc.accuracy_flag));
+            memcpy(&(event.data.acc.accuracy_flag),
+                   (uint8_t*)ppt_arg,
+                   sizeof(event.data.acc.accuracy_flag));
 
             // WE WANT THIS
             g_accel_x          = event.data.acc.vect[0];
@@ -289,7 +301,9 @@ void build_sensor_event_data(void* ppt_context, enum inv_icm20948_sensor p_senso
 
         case INV_SENSOR_TYPE_MAGNETOMETER:
             memcpy(event.data.mag.vect, ppt_data, sizeof(event.data.mag.vect));
-            memcpy(&(event.data.mag.accuracy_flag), (uint8_t*)ppt_arg, sizeof(event.data.mag.accuracy_flag));
+            memcpy(&(event.data.mag.accuracy_flag),
+                   (uint8_t*)ppt_arg,
+                   sizeof(event.data.mag.accuracy_flag));
 
             // WE WANT THIS
             g_mag_x          = event.data.mag.vect[0];
@@ -300,7 +314,9 @@ void build_sensor_event_data(void* ppt_context, enum inv_icm20948_sensor p_senso
 
         case INV_SENSOR_TYPE_GEOMAG_ROTATION_VECTOR:
         case INV_SENSOR_TYPE_ROTATION_VECTOR:
-            memcpy(&(event.data.quaternion.accuracy), (float*)ppt_arg, sizeof(event.data.quaternion.accuracy));
+            memcpy(&(event.data.quaternion.accuracy),
+                   (float*)ppt_arg,
+                   sizeof(event.data.quaternion.accuracy));
             memcpy(event.data.quaternion.quat, ppt_data, sizeof(event.data.quaternion.quat));
             // WE WANT THIS
             g_quat_w          = event.data.quaternion.quat[0];
@@ -405,32 +421,33 @@ response_status_t dd_icm209_init(TeensyICM20948Settings p_settings)
     inv_icm20948_set_lowpower_or_highperformance(&g_icm_device, p_settings.mode);
 
     // Set frequency
+    g_rc =
+      inv_icm20948_set_sensor_period(&g_icm_device,
+                                     idd_sensortype_conversion(INV_SENSOR_TYPE_ROTATION_VECTOR),
+                                     1000 / p_settings.quaternion_frequency);
     g_rc = inv_icm20948_set_sensor_period(&g_icm_device,
-                                        idd_sensortype_conversion(INV_SENSOR_TYPE_ROTATION_VECTOR),
-                                        1000 / p_settings.quaternion_frequency);
+                                          idd_sensortype_conversion(INV_SENSOR_TYPE_GYROSCOPE),
+                                          1000 / p_settings.gyroscope_frequency);
     g_rc = inv_icm20948_set_sensor_period(&g_icm_device,
-                                        idd_sensortype_conversion(INV_SENSOR_TYPE_GYROSCOPE),
-                                        1000 / p_settings.gyroscope_frequency);
+                                          idd_sensortype_conversion(INV_SENSOR_TYPE_ACCELEROMETER),
+                                          1000 / p_settings.accelerometer_frequency);
     g_rc = inv_icm20948_set_sensor_period(&g_icm_device,
-                                        idd_sensortype_conversion(INV_SENSOR_TYPE_ACCELEROMETER),
-                                        1000 / p_settings.accelerometer_frequency);
-    g_rc = inv_icm20948_set_sensor_period(&g_icm_device,
-                                        idd_sensortype_conversion(INV_SENSOR_TYPE_MAGNETOMETER),
-                                        1000 / p_settings.magnetometer_frequency);
+                                          idd_sensortype_conversion(INV_SENSOR_TYPE_MAGNETOMETER),
+                                          1000 / p_settings.magnetometer_frequency);
 
     // Enable / disable
     g_rc = inv_icm20948_enable_sensor(&g_icm_device,
-                                    idd_sensortype_conversion(INV_SENSOR_TYPE_GYROSCOPE),
-                                    p_settings.enable_gyroscope);
+                                      idd_sensortype_conversion(INV_SENSOR_TYPE_GYROSCOPE),
+                                      p_settings.enable_gyroscope);
     g_rc = inv_icm20948_enable_sensor(&g_icm_device,
-                                    idd_sensortype_conversion(INV_SENSOR_TYPE_ACCELEROMETER),
-                                    p_settings.enable_accelerometer);
+                                      idd_sensortype_conversion(INV_SENSOR_TYPE_ACCELEROMETER),
+                                      p_settings.enable_accelerometer);
     g_rc = inv_icm20948_enable_sensor(&g_icm_device,
-                                    idd_sensortype_conversion(INV_SENSOR_TYPE_ROTATION_VECTOR),
-                                    p_settings.enable_quaternion);
+                                      idd_sensortype_conversion(INV_SENSOR_TYPE_ROTATION_VECTOR),
+                                      p_settings.enable_quaternion);
     g_rc = inv_icm20948_enable_sensor(&g_icm_device,
-                                    idd_sensortype_conversion(INV_SENSOR_TYPE_MAGNETOMETER),
-                                    p_settings.enable_magnetometer);
+                                      idd_sensortype_conversion(INV_SENSOR_TYPE_MAGNETOMETER),
+                                      p_settings.enable_magnetometer);
     if (g_rc != 0)
     {
         return RET_ERROR; // Handle error
@@ -466,33 +483,33 @@ bool_t dd_icm209_quat_data_is_ready()
 
 void dd_icm209_read_gyro_data(float* ppt_x, float* ppt_y, float* ppt_z)
 {
-    *ppt_x              = g_gyro_x;
-    *ppt_y              = g_gyro_y;
-    *ppt_z              = g_gyro_z;
+    *ppt_x            = g_gyro_x;
+    *ppt_y            = g_gyro_y;
+    *ppt_z            = g_gyro_z;
     g_gyro_data_ready = FALSE;
 }
 
 void dd_icm209_read_accel_data(float* ppt_x, float* ppt_y, float* ppt_z)
 {
-    *ppt_x               = g_accel_x;
-    *ppt_y               = g_accel_y;
-    *ppt_z               = g_accel_z;
+    *ppt_x             = g_accel_x;
+    *ppt_y             = g_accel_y;
+    *ppt_z             = g_accel_z;
     g_accel_data_ready = FALSE;
 }
 
 void dd_icm209_read_mag_data(float* ppt_x, float* ppt_y, float* ppt_z)
 {
-    *ppt_x             = g_mag_x;
-    *ppt_y             = g_mag_y;
-    *ppt_z             = g_mag_z;
+    *ppt_x           = g_mag_x;
+    *ppt_y           = g_mag_y;
+    *ppt_z           = g_mag_z;
     g_mag_data_ready = FALSE;
 }
 
 void dd_icm209_read_quat_data(float* ppt_w, float* ppt_x, float* ppt_y, float* ppt_z)
 {
-    *ppt_w              = g_quat_w;
-    *ppt_x              = g_quat_x;
-    *ppt_y              = g_quat_y;
-    *ppt_z              = g_quat_z;
+    *ppt_w            = g_quat_w;
+    *ppt_x            = g_quat_x;
+    *ppt_y            = g_quat_y;
+    *ppt_z            = g_quat_z;
     g_quat_data_ready = FALSE;
 }
