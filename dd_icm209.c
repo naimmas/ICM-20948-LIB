@@ -128,7 +128,7 @@ uint64_t inv_icm20948_get_time_us(void)
 
 static void icm20948_apply_mounting_matrix(void)
 {
-    int ii;
+    int ii = 0;
 
     for (ii = 0; ii < INV_ICM20948_SENSOR_MAX; ii++)
     {
@@ -204,8 +204,8 @@ int icm20948_sensor_setup(void)
 
 static uint8_t icm20948_get_grv_accuracy(void)
 {
-    uint8_t accel_accuracy;
-    uint8_t gyro_accuracy;
+    uint8_t accel_accuracy = 0;
+    uint8_t gyro_accuracy = 0;
 
     accel_accuracy = (uint8_t)inv_icm20948_get_accel_accuracy();
     gyro_accuracy  = (uint8_t)inv_icm20948_get_gyro_accuracy();
@@ -252,17 +252,17 @@ void build_sensor_event_data(void* ppt_context, enum inv_icm20948_sensor p_senso
             memcpy(raw_bias_data, ppt_data, sizeof(raw_bias_data));
             memcpy(event.data.gyr.vect, &raw_bias_data[0], sizeof(event.data.gyr.vect));
             memcpy(event.data.gyr.bias, &raw_bias_data[3], sizeof(event.data.gyr.bias));
-            memcpy(&(event.data.gyr.accuracy_flag), ppt_arg, sizeof(event.data.gyr.accuracy_flag));
+            memcpy(&(event.data.gyr.accuracy_flag), (uint8_t*)ppt_arg, sizeof(event.data.gyr.accuracy_flag));
             break;
         case INV_SENSOR_TYPE_UNCAL_MAGNETOMETER:
             memcpy(raw_bias_data, ppt_data, sizeof(raw_bias_data));
             memcpy(event.data.mag.vect, &raw_bias_data[0], sizeof(event.data.mag.vect));
             memcpy(event.data.mag.bias, &raw_bias_data[3], sizeof(event.data.mag.bias));
-            memcpy(&(event.data.gyr.accuracy_flag), ppt_arg, sizeof(event.data.gyr.accuracy_flag));
+            memcpy(&(event.data.gyr.accuracy_flag), (uint8_t*)ppt_arg, sizeof(event.data.gyr.accuracy_flag));
             break;
         case INV_SENSOR_TYPE_GYROSCOPE:
             memcpy(event.data.gyr.vect, ppt_data, sizeof(event.data.gyr.vect));
-            memcpy(&(event.data.gyr.accuracy_flag), ppt_arg, sizeof(event.data.gyr.accuracy_flag));
+            memcpy(&(event.data.gyr.accuracy_flag), (uint8_t*)ppt_arg, sizeof(event.data.gyr.accuracy_flag));
 
             // WE WANT THIS
             g_gyro_x          = event.data.gyr.vect[0];
@@ -278,7 +278,7 @@ void build_sensor_event_data(void* ppt_context, enum inv_icm20948_sensor p_senso
         case INV_SENSOR_TYPE_LINEAR_ACCELERATION:
         case INV_SENSOR_TYPE_ACCELEROMETER:
             memcpy(event.data.acc.vect, ppt_data, sizeof(event.data.acc.vect));
-            memcpy(&(event.data.acc.accuracy_flag), ppt_arg, sizeof(event.data.acc.accuracy_flag));
+            memcpy(&(event.data.acc.accuracy_flag), (uint8_t*)ppt_arg, sizeof(event.data.acc.accuracy_flag));
 
             // WE WANT THIS
             g_accel_x          = event.data.acc.vect[0];
@@ -289,7 +289,7 @@ void build_sensor_event_data(void* ppt_context, enum inv_icm20948_sensor p_senso
 
         case INV_SENSOR_TYPE_MAGNETOMETER:
             memcpy(event.data.mag.vect, ppt_data, sizeof(event.data.mag.vect));
-            memcpy(&(event.data.mag.accuracy_flag), ppt_arg, sizeof(event.data.mag.accuracy_flag));
+            memcpy(&(event.data.mag.accuracy_flag), (uint8_t*)ppt_arg, sizeof(event.data.mag.accuracy_flag));
 
             // WE WANT THIS
             g_mag_x          = event.data.mag.vect[0];
@@ -300,7 +300,7 @@ void build_sensor_event_data(void* ppt_context, enum inv_icm20948_sensor p_senso
 
         case INV_SENSOR_TYPE_GEOMAG_ROTATION_VECTOR:
         case INV_SENSOR_TYPE_ROTATION_VECTOR:
-            memcpy(&(event.data.quaternion.accuracy), ppt_arg, sizeof(event.data.quaternion.accuracy));
+            memcpy(&(event.data.quaternion.accuracy), (float*)ppt_arg, sizeof(event.data.quaternion.accuracy));
             memcpy(event.data.quaternion.quat, ppt_data, sizeof(event.data.quaternion.quat));
             // WE WANT THIS
             g_quat_w          = event.data.quaternion.quat[0];
